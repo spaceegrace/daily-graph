@@ -33,7 +33,18 @@
 
 <script>
 let chartInstance = null;
-const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
+const moodScores = {
+  "Manic": 10,
+  "Crying": 9,
+  "Sad": 8,
+  "Angry": 7,
+  "Grumpy": 6,
+  "Confused": 5,
+  "Tired": 4,
+  "Focused": 3,
+  "Calm": 2,
+  "Happy": 1
+};
 
 function getTime(fullDate) {
     if (!fullDate || !fullDate.includes('@')) return "00:00";
