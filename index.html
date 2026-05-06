@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Health Stats Visualizer</title>
-    <!-- Use exactly the script you provided -->
-    <script src=" https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js "></script>
+    <script src="https://jsdelivr.net"></script>
     <style>
         body { font-family: system-ui, sans-serif; background: #f1f5f9; padding: 20px; display: flex; justify-content: center; }
         .container { width: 100%; max-width: 1000px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -28,16 +27,16 @@
 <script>
 window.onload = function() {
     let chartInstance = null;
-    const moodScores = { "Focused": 8, "Calm": 7, "Happy": 9, "Manic": 10, "Confused": 6, "Tired": 5, "Grumpy": 4, "Angry": 3, "Crying": 1, "Sad": 2};
+    const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
 
     function getTime(fullDate) {
         if (!fullDate || !fullDate.includes('@')) return "00:00";
-        return fullDate.split('@')[1].trim(); // Takes the time part after '@'
+        return fullDate.split('@').trim(); 
     }
 
     document.getElementById('drawBtn').onclick = function visualize() {
         if (typeof Chart === 'undefined') {
-            alert("Chart library is still loading. Please wait a moment.");
+            alert("Chart library is still loading...");
             return;
         }
 
@@ -46,8 +45,6 @@ window.onload = function() {
 
         try {
             const data = JSON.parse(input);
-            
-            // Create a sorted list of all unique timestamps
             const allEntries = [
                 ...(data.sugarLog || []),
                 ...(data.moodLog || []),
@@ -57,30 +54,32 @@ window.onload = function() {
             const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
             const datasets = [];
 
-            // 1. Blood Sugar
+            // 1. Blood Sugar (Line)
             if (data.sugarLog?.length > 0) {
                 datasets.push({
                     label: 'Blood Sugar',
                     data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
                     borderColor: '#ef4444', 
+                    backgroundColor: '#ef4444',
                     tension: 0.3, 
                     yAxisID: 'y'
                 });
             }
 
-            // 2. Moods
+            // 2. Moods (Line)
             const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
             if (moodsOnly.length > 0) {
                 datasets.push({
                     label: 'Mood (1-10)',
                     data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
                     borderColor: '#f59e0b', 
+                    backgroundColor: '#f59e0b',
                     tension: 0.3, 
                     yAxisID: 'yMood'
                 });
             }
 
-            // 3. Water Intake (Running count)
+            // 3. Water Intake (Lighter Blue Triangles)
             let waterCount = 0;
             const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
             if (waterOnly.length > 0) {
@@ -90,19 +89,25 @@ window.onload = function() {
                         waterCount++;
                         return { x: getTime(w.fullDate), y: waterCount };
                     }),
-                    borderColor: '#3b82f6', 
-                    tension: 0.3, 
+                    borderColor: '#00b4d8', // Darker blue border for definition
+                    backgroundColor: '#00d4ff', // Lighter blue fill
+                    showLine: false,
+                    pointStyle: 'triangle',
+                    pointRadius: 10, 
                     yAxisID: 'y'
                 });
             }
 
-            // 4. Carbs
+            // 4. Carbs (Green Squares)
             if (data.carbLog?.length > 0) {
                 datasets.push({
                     label: 'Carbs',
                     data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
-                    borderColor: '#10b981', 
-                    tension: 0.3, 
+                    borderColor: '#10b981',
+                    backgroundColor: '#10b981',
+                    showLine: false,
+                    pointStyle: 'rect',
+                    pointRadius: 8, 
                     yAxisID: 'y'
                 });
             }
@@ -117,14 +122,9 @@ window.onload = function() {
                     maintainAspectRatio: false,
                     scales: {
                         x: { type: 'category', labels: labels },
-                        y: { 
-                            position: 'left', 
-                            title: { display: true, text: 'Stats (Sugar, Water, Carbs)' } 
-                        },
+                        y: { position: 'left', title: { display: true, text: 'Health Stats' } },
                         yMood: { 
-                            position: 'right', 
-                            min: 0, 
-                            max: 10, 
+                            position: 'right', min: 0, max: 10, 
                             title: { display: true, text: 'Mood Score' },
                             grid: { drawOnChartArea: false }
                         }
@@ -132,8 +132,7 @@ window.onload = function() {
                 }
             });
         } catch (e) {
-            alert("Error: Please check your JSON format.");
-            console.error(e);
+            alert("Error parsing JSON. Check your data format!");
         }
     };
 };
