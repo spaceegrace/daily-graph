@@ -4,14 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Health Stats Visualizer</title>
-    <script src="https://jsdelivr.net"></script>
+    <!-- Using your requested specific CDN link -->
+    <script src=" https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js "></script>
     <style>
-        body { font-family: system-ui, sans-serif; background: #f1f5f9; padding: 20px; display: flex; justify-content: center; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f1f5f9; padding: 20px; display: flex; justify-content: center; }
         .container { width: 100%; max-width: 1000px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h1 { font-size: 1.5rem; color: #0f172a; margin-top: 0; }
         textarea { width: 100%; height: 120px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 15px; box-sizing: border-box; font-family: monospace; font-size: 12px; }
+        .controls { display: flex; gap: 10px; }
         button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         button:hover { background: #2563eb; }
+        .btn-clear { background: #94a3b8; }
+        .btn-clear:hover { background: #64748b; }
         .chart-box { margin-top: 30px; height: 500px; width: 100%; }
     </style>
 </head>
@@ -19,123 +23,130 @@
 
 <div class="container">
     <h1>Daily Stats Visualizer</h1>
-    <textarea id="jsonInput" placeholder="Paste your JSON data here..."></textarea>
-    <button id="drawBtn">Generate Stats Chart</button>
+    <textarea id="jsonInput" placeholder="Paste your Checklist Hub JSON data here..."></textarea>
+    <div class="controls">
+        <button id="drawBtn">Generate Stats Chart</button>
+        <button class="btn-clear" onclick="document.getElementById('jsonInput').value=''">Clear Data</button>
+    </div>
     <div class="chart-box"><canvas id="healthChart"></canvas></div>
 </div>
 
 <script>
-window.onload = function() {
-    let chartInstance = null;
-    const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
+let chartInstance = null;
+const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
 
-    function getTime(fullDate) {
-        if (!fullDate || !fullDate.includes('@')) return "00:00";
-        return fullDate.split('@').trim(); 
+function getTime(fullDate) {
+    if (!fullDate || !fullDate.includes('@')) return "00:00";
+    return fullDate.split('@')[1].trim(); 
+}
+
+function visualize() {
+    // Retry logic if library isn't ready
+    if (typeof Chart === 'undefined') {
+        console.log("Chart.js loading...");
+        setTimeout(visualize, 300);
+        return;
     }
 
-    document.getElementById('drawBtn').onclick = function visualize() {
-        if (typeof Chart === 'undefined') {
-            alert("Chart library is still loading...");
-            return;
+    const input = document.getElementById('jsonInput').value;
+    const ctx = document.getElementById('healthChart').getContext('2d');
+
+    try {
+        const data = JSON.parse(input);
+        
+        // Sort and map labels
+        const allEntries = [
+            ...(data.sugarLog || []),
+            ...(data.moodLog || []),
+            ...(data.carbLog || [])
+        ].sort((a, b) => a.id - b.id);
+
+        const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
+        const datasets = [];
+
+        // 1. Blood Sugar (Red Line)
+        if (data.sugarLog?.length > 0) {
+            datasets.push({
+                label: 'Blood Sugar',
+                data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
+                borderColor: '#ef4444', 
+                backgroundColor: '#ef4444',
+                tension: 0.3, 
+                yAxisID: 'y'
+            });
         }
 
-        const input = document.getElementById('jsonInput').value;
-        const ctx = document.getElementById('healthChart').getContext('2d');
+        // 2. Moods (Orange Line)
+        const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
+        if (moodsOnly.length > 0) {
+            datasets.push({
+                label: 'Mood (1-10)',
+                data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
+                borderColor: '#f59e0b', 
+                backgroundColor: '#f59e0b',
+                tension: 0.3, 
+                yAxisID: 'yMood'
+            });
+        }
 
-        try {
-            const data = JSON.parse(input);
-            const allEntries = [
-                ...(data.sugarLog || []),
-                ...(data.moodLog || []),
-                ...(data.carbLog || [])
-            ].sort((a, b) => a.id - b.id);
+        // 3. Water Intake (Light Blue Triangle Dots)
+        let waterCount = 0;
+        const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
+        if (waterOnly.length > 0) {
+            datasets.push({
+                label: 'Water Intake',
+                data: waterOnly.map(w => {
+                    waterCount++;
+                    return { x: getTime(w.fullDate), y: waterCount };
+                }),
+                borderColor: '#00b4d8',
+                backgroundColor: '#00d4ff',
+                showLine: false,
+                pointStyle: 'triangle',
+                pointRadius: 10, 
+                yAxisID: 'y'
+            });
+        }
 
-            const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
-            const datasets = [];
+        // 4. Carbs (Green Square Dots)
+        if (data.carbLog?.length > 0) {
+            datasets.push({
+                label: 'Carbs',
+                data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
+                borderColor: '#10b981',
+                backgroundColor: '#10b981',
+                showLine: false,
+                pointStyle: 'rect',
+                pointRadius: 8, 
+                yAxisID: 'y'
+            });
+        }
 
-            // 1. Blood Sugar (Line)
-            if (data.sugarLog?.length > 0) {
-                datasets.push({
-                    label: 'Blood Sugar',
-                    data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
-                    borderColor: '#ef4444', 
-                    backgroundColor: '#ef4444',
-                    tension: 0.3, 
-                    yAxisID: 'y'
-                });
-            }
+        if (chartInstance) chartInstance.destroy();
 
-            // 2. Moods (Line)
-            const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
-            if (moodsOnly.length > 0) {
-                datasets.push({
-                    label: 'Mood (1-10)',
-                    data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
-                    borderColor: '#f59e0b', 
-                    backgroundColor: '#f59e0b',
-                    tension: 0.3, 
-                    yAxisID: 'yMood'
-                });
-            }
-
-            // 3. Water Intake (Lighter Blue Triangles)
-            let waterCount = 0;
-            const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
-            if (waterOnly.length > 0) {
-                datasets.push({
-                    label: 'Water Intake',
-                    data: waterOnly.map(w => {
-                        waterCount++;
-                        return { x: getTime(w.fullDate), y: waterCount };
-                    }),
-                    borderColor: '#00b4d8', // Darker blue border for definition
-                    backgroundColor: '#00d4ff', // Lighter blue fill
-                    showLine: false,
-                    pointStyle: 'triangle',
-                    pointRadius: 10, 
-                    yAxisID: 'y'
-                });
-            }
-
-            // 4. Carbs (Green Squares)
-            if (data.carbLog?.length > 0) {
-                datasets.push({
-                    label: 'Carbs',
-                    data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
-                    borderColor: '#10b981',
-                    backgroundColor: '#10b981',
-                    showLine: false,
-                    pointStyle: 'rect',
-                    pointRadius: 8, 
-                    yAxisID: 'y'
-                });
-            }
-
-            if (chartInstance) chartInstance.destroy();
-
-            chartInstance = new Chart(ctx, {
-                type: 'line',
-                data: { datasets: datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { type: 'category', labels: labels },
-                        y: { position: 'left', title: { display: true, text: 'Health Stats' } },
-                        yMood: { 
-                            position: 'right', min: 0, max: 10, 
-                            title: { display: true, text: 'Mood Score' },
-                            grid: { drawOnChartArea: false }
-                        }
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'category', labels: labels },
+                    y: { position: 'left', title: { display: true, text: 'Health Stats' } },
+                    yMood: { 
+                        position: 'right', min: 0, max: 10, 
+                        title: { display: true, text: 'Mood Score' },
+                        grid: { drawOnChartArea: false }
                     }
                 }
-            });
-        } catch (e) {
-            alert("Error parsing JSON. Check your data format!");
-        }
-    };
-};
+            }
+        });
+    } catch (e) {
+        alert("JSON Error: Ensure you copied the entire data block from the hub.");
+    }
+}
+
+document.getElementById('drawBtn').addEventListener('click', visualize);
 </script>
 </body>
 </html>
