@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Stats Visualizer</title>
-    <!-- Using your requested CDN link -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+    <!-- Updated CDN Link -->
+    <script src="https://jsdelivr.net"></script>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; background: #f1f5f9; padding: 20px; display: flex; justify-content: center; }
         .container { width: 100%; max-width: 1000px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
@@ -21,106 +21,100 @@
 <div class="container">
     <h1>Daily Stats Visualizer</h1>
     <textarea id="jsonInput" placeholder="Paste your Checklist Hub JSON here..."></textarea>
-    <button onclick="visualize()">Generate Stats Chart</button>
+    <button id="drawBtn">Generate Stats Chart</button>
     <div class="chart-box"><canvas id="healthChart"></canvas></div>
 </div>
 
 <script>
-let chartInstance = null;
+// We use window.onload to make sure Chart.js is FOUND before we run anything
+window.onload = function() {
+    let chartInstance = null;
+    const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
 
-// Mapping text moods to numbers for the graph
-const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
+    function getTime(fullDate) {
+        if (!fullDate || !fullDate.includes('@')) return "00:00";
+        return fullDate.split('@')[1].trim();
+    }
 
-function getTime(fullDate) {
-    if (!fullDate || !fullDate.includes('@')) return "00:00";
-    return fullDate.split('@')[1].trim();
-}
-
-function visualize() {
-    const input = document.getElementById('jsonInput').value;
-    const ctx = document.getElementById('healthChart').getContext('2d');
-
-    try {
-        const data = JSON.parse(input);
-        
-        // 1. Gather all timestamps across all logs to create a master timeline
-        const allEntries = [
-            ...(data.sugarLog || []),
-            ...(data.moodLog || []),
-            ...(data.carbLog || [])
-        ].sort((a, b) => a.id - b.id);
-
-        const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
-        const datasets = [];
-
-        // 2. Blood Sugar Log
-        if (data.sugarLog && data.sugarLog.length > 0) {
-            datasets.push({
-                label: 'Blood Sugar',
-                data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
-                borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.3, yAxisID: 'y'
-            });
+    document.getElementById('drawBtn').onclick = function visualize() {
+        // Double check if Chart variable exists
+        if (typeof Chart === 'undefined') {
+            alert("Chart library is still loading. Please wait a second and try again.");
+            return;
         }
 
-        // 3. Mood Log (Text to Number)
-        const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
-        if (moodsOnly.length > 0) {
-            datasets.push({
-                label: 'Mood (1-10)',
-                data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
-                borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.3, yAxisID: 'yMood'
-            });
-        }
+        const input = document.getElementById('jsonInput').value;
+        const ctx = document.getElementById('healthChart').getContext('2d');
 
-        // 4. Water Intake (Cumulative)
-        let count = 0;
-        const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
-        if (waterOnly.length > 0) {
-            datasets.push({
-                label: 'Water Intake',
-                data: waterOnly.map(w => {
-                    count++;
-                    return { x: getTime(w.fullDate), y: count };
-                }),
-                borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.3, yAxisID: 'y'
-            });
-        }
+        try {
+            const data = JSON.parse(input);
+            const allEntries = [
+                ...(data.sugarLog || []),
+                ...(data.moodLog || []),
+                ...(data.carbLog || [])
+            ].sort((a, b) => a.id - b.id);
 
-        // 5. Carb Log
-        if (data.carbLog && data.carbLog.length > 0) {
-            datasets.push({
-                label: 'Carbs',
-                data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
-                borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.3, yAxisID: 'y'
-            });
-        }
+            const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
+            const datasets = [];
 
-        if (chartInstance) chartInstance.destroy();
+            if (data.sugarLog?.length > 0) {
+                datasets.push({
+                    label: 'Blood Sugar',
+                    data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
+                    borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.3, yAxisID: 'y'
+                });
+            }
 
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: { datasets: datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: { type: 'category', labels: labels, title: { display: true, text: 'Time' } },
-                    y: { position: 'left', title: { display: true, text: 'Values (Sugar, Carbs, Water)' } },
-                    yMood: { 
-                        position: 'right', 
-                        min: 0, max: 10, 
-                        title: { display: true, text: 'Mood Score' },
-                        grid: { drawOnChartArea: false } 
+            const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
+            if (moodsOnly.length > 0) {
+                datasets.push({
+                    label: 'Mood (1-10)',
+                    data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
+                    borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.3, yAxisID: 'yMood'
+                });
+            }
+
+            let waterCount = 0;
+            const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
+            if (waterOnly.length > 0) {
+                datasets.push({
+                    label: 'Water Intake',
+                    data: waterOnly.map(w => {
+                        waterCount++;
+                        return { x: getTime(w.fullDate), y: waterCount };
+                    }),
+                    borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.3, yAxisID: 'y'
+                });
+            }
+
+            if (data.carbLog?.length > 0) {
+                datasets.push({
+                    label: 'Carbs',
+                    data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
+                    borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.3, yAxisID: 'y'
+                });
+            }
+
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { type: 'category', labels: labels },
+                        y: { position: 'left', title: { display: true, text: 'Stats' } },
+                        yMood: { position: 'right', min: 0, max: 10, title: { display: true, text: 'Mood' }, grid: { drawOnChartArea: false } }
                     }
                 }
-            }
-        });
-    } catch (e) {
-        console.error(e);
-        alert("Error: Please make sure the JSON data is pasted correctly.");
-    }
-}
+            });
+        } catch (e) {
+            alert("Error: Please check your JSON data.");
+        }
+    };
+};
 </script>
-
 </body>
 </html>
