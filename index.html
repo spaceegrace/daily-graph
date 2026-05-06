@@ -2,78 +2,96 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Stats Visualizer</title>
-    <!-- Using the CDN so you don't get the "Can't find variable" error -->
-    <script src="https://jsdelivr.net"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Stats Visualizer</title>
+    <!-- Using your requested CDN link -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
     <style>
-        body { font-family: system-ui, sans-serif; background: #f1f5f9; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 1000px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 150px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-sizing: border-box; font-family: monospace; font-size: 12px; }
-        button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        #status { margin-top: 10px; font-weight: bold; }
-        .chart-box { margin-top: 20px; height: 500px; width: 100%; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f1f5f9; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 1000px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5rem; color: #0f172a; margin-top: 0; }
+        textarea { width: 100%; height: 120px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 15px; box-sizing: border-box; font-family: monospace; font-size: 12px; }
+        button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        .chart-box { margin-top: 30px; height: 500px; width: 100%; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Stats Visualizer</h1>
-    <textarea id="jsonInput" placeholder="Paste data here..."></textarea>
-    <button onclick="visualize()">Generate Graph</button>
-    <div id="status" style="color: #64748b;">Ready</div>
+    <h1>Daily Stats Visualizer</h1>
+    <textarea id="jsonInput" placeholder="Paste your Checklist Hub JSON here..."></textarea>
+    <button onclick="visualize()">Generate Stats Chart</button>
     <div class="chart-box"><canvas id="healthChart"></canvas></div>
 </div>
 
 <script>
 let chartInstance = null;
+
+// Mapping text moods to numbers for the graph
 const moodScores = { "Focused": 10, "Calm": 8, "Neutral": 5, "Confused": 4, "Tired": 3, "Grumpy": 1 };
 
-function parseTime(str) {
-    if (!str || !str.includes('@')) return "00:00";
-    return str.split('@').pop().trim();
+function getTime(fullDate) {
+    if (!fullDate || !fullDate.includes('@')) return "00:00";
+    return fullDate.split('@')[1].trim();
 }
 
 function visualize() {
-    const rawInput = document.getElementById('jsonInput').value;
-    const status = document.getElementById('status');
+    const input = document.getElementById('jsonInput').value;
     const ctx = document.getElementById('healthChart').getContext('2d');
 
     try {
-        const cleanInput = rawInput.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-        const data = JSON.parse(cleanInput);
+        const data = JSON.parse(input);
         
-        status.innerText = "Analyzing data...";
-        status.style.color = "blue";
+        // 1. Gather all timestamps across all logs to create a master timeline
+        const allEntries = [
+            ...(data.sugarLog || []),
+            ...(data.moodLog || []),
+            ...(data.carbLog || [])
+        ].sort((a, b) => a.id - b.id);
 
-        const allLogs = [...(data.sugarLog || []), ...(data.moodLog || [])].sort((a,b) => a.id - b.id);
-        const labels = [...new Set(allLogs.map(i => parseTime(i.fullDate)))];
-
+        const labels = [...new Set(allEntries.map(e => getTime(e.fullDate)))];
         const datasets = [];
 
+        // 2. Blood Sugar Log
         if (data.sugarLog && data.sugarLog.length > 0) {
             datasets.push({
                 label: 'Blood Sugar',
-                data: data.sugarLog.map(s => ({ x: parseTime(s.fullDate), y: s.val })),
-                borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.3
+                data: data.sugarLog.map(s => ({ x: getTime(s.fullDate), y: s.val })),
+                borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.3, yAxisID: 'y'
             });
         }
 
-        const moods = (data.moodLog || []).filter(m => m.type === 'mood');
-        if (moods.length > 0) {
+        // 3. Mood Log (Text to Number)
+        const moodsOnly = (data.moodLog || []).filter(m => m.type === 'mood');
+        if (moodsOnly.length > 0) {
             datasets.push({
                 label: 'Mood (1-10)',
-                data: moods.map(m => ({ x: parseTime(m.fullDate), y: moodScores[m.val] || 5 })),
-                borderColor: '#f59e0b', backgroundColor: '#f59e0b', yAxisID: 'yMood', tension: 0.3
+                data: moodsOnly.map(m => ({ x: getTime(m.fullDate), y: moodScores[m.val] || 5 })),
+                borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.3, yAxisID: 'yMood'
             });
         }
 
-        let wCount = 0;
-        const water = (data.moodLog || []).filter(m => m.type === 'water');
-        if (water.length > 0) {
+        // 4. Water Intake (Cumulative)
+        let count = 0;
+        const waterOnly = (data.moodLog || []).filter(m => m.type === 'water');
+        if (waterOnly.length > 0) {
             datasets.push({
-                label: 'Water',
-                data: water.map(w => ({ x: parseTime(w.fullDate), y: ++wCount })),
-                borderColor: '#3b82f6', backgroundColor: '#3b82f6', stepped: true
+                label: 'Water Intake',
+                data: waterOnly.map(w => {
+                    count++;
+                    return { x: getTime(w.fullDate), y: count };
+                }),
+                borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.3, yAxisID: 'y'
+            });
+        }
+
+        // 5. Carb Log
+        if (data.carbLog && data.carbLog.length > 0) {
+            datasets.push({
+                label: 'Carbs',
+                data: data.carbLog.map(c => ({ x: getTime(c.fullDate), y: c.val })),
+                borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.3, yAxisID: 'y'
             });
         }
 
@@ -86,20 +104,23 @@ function visualize() {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: { type: 'category', labels: labels },
-                    yMood: { position: 'right', min: 0, max: 10, grid: { drawOnChartArea: false } }
+                    x: { type: 'category', labels: labels, title: { display: true, text: 'Time' } },
+                    y: { position: 'left', title: { display: true, text: 'Values (Sugar, Carbs, Water)' } },
+                    yMood: { 
+                        position: 'right', 
+                        min: 0, max: 10, 
+                        title: { display: true, text: 'Mood Score' },
+                        grid: { drawOnChartArea: false } 
+                    }
                 }
             }
         });
-
-        status.innerText = "Graph Generated Successfully!";
-        status.style.color = "green";
-
-    } catch (err) {
-        status.innerText = "Error: " + err.message;
-        status.style.color = "red";
+    } catch (e) {
+        console.error(e);
+        alert("Error: Please make sure the JSON data is pasted correctly.");
     }
 }
 </script>
+
 </body>
 </html>
